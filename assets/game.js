@@ -1,7 +1,7 @@
 // Configuration object
 const config = {
   TILE_SIZE: 32,
-  WORLD_SIZE: 250,
+  WORLD_SIZE: 256,
   PLAYER_SIZE: 32,
   PLAYER_SPEED: 5,
   CAMERA_LERP: 0.05,
@@ -19,11 +19,11 @@ const tileColors = {
 
 // Minimap configuration
 const minimapConfig = {
-  width: 200, // Width of the minimap in pixels
-  height: 200, // Height of the minimap in pixels
-  scale: config.WORLD_SIZE / 200, // Scale factor (1 tile = 1 pixel)
-  offsetX: 20, // Offset from the right edge of the screen
-  offsetY: 20, // Offset from the top edge of the screen
+  width: 200,
+  height: 200,
+  scale: config.WORLD_SIZE / 200,
+  offsetX: 20,
+  offsetY: 20,
 };
 
 // Canvas and context
@@ -51,9 +51,8 @@ let loadedImages = 0;
 function checkAllLoaded() {
   loadedImages++;
   if (loadedImages === Object.keys(sprites).length) {
-    // All images loaded, start game
     generateTerrain();
-    gameLoop(); // Ensure gameLoop is defined before this is called
+    gameLoop();
   }
 }
 
@@ -85,6 +84,8 @@ let camera = {
 let isMouseDown = false;
 let mouseWorldX = 0;
 let mouseWorldY = 0;
+let lastFrameMouseX = 0;
+let lastFrameMouseY = 0;
 
 // Resize canvas
 function resize() {
@@ -118,12 +119,10 @@ function generateTerrain() {
       }
     }
   }
-
-  // Pre-render the minimap
   renderMinimap();
 }
 
-// Pre-render the minimap
+// Pre-render minimap
 function renderMinimap() {
   minimapCtx.fillStyle = "#000000";
   minimapCtx.fillRect(0, 0, minimapConfig.width, minimapConfig.height);
@@ -131,9 +130,7 @@ function renderMinimap() {
   for (let y = 0; y < config.WORLD_SIZE; y++) {
     for (let x = 0; x < config.WORLD_SIZE; x++) {
       const tileType = tiles[y][x];
-      const color = tileColors[tileType];
-      minimapCtx.fillStyle = color;
-
+      minimapCtx.fillStyle = tileColors[tileType];
       const pixelX = Math.floor(x / minimapConfig.scale);
       const pixelY = Math.floor(y / minimapConfig.scale);
       minimapCtx.fillRect(pixelX, pixelY, 1, 1);
@@ -141,22 +138,20 @@ function renderMinimap() {
   }
 }
 
-// Draw the minimap
+// Draw minimap
 function drawMinimap() {
   const minimapX = canvas.width - minimapConfig.width - minimapConfig.offsetX;
   const minimapY = minimapConfig.offsetY;
-
-  // Draw the pre-rendered minimap
   ctx.drawImage(minimapCanvas, minimapX, minimapY);
 
-  // Draw the player on the minimap
+  // Draw player on minimap
   const playerMinimapX = minimapX + Math.floor(player.x / (config.TILE_SIZE * minimapConfig.scale));
   const playerMinimapY = minimapY + Math.floor(player.y / (config.TILE_SIZE * minimapConfig.scale));
-  ctx.fillStyle = "#FF0000"; // Player color
-  ctx.fillRect(playerMinimapX, playerMinimapY, 2, 2); // Slightly larger to make it visible
+  ctx.fillStyle = "#FF0000";
+  ctx.fillRect(playerMinimapX, playerMinimapY, 2, 2);
 }
 
-// Convert world coordinates to screen coordinates
+// Coordinate conversions
 function worldToScreen(x, y) {
   return {
     x: (x - camera.x) * config.ZOOM_LEVEL,
@@ -164,7 +159,6 @@ function worldToScreen(x, y) {
   };
 }
 
-// Convert screen coordinates to world coordinates
 function screenToWorld(x, y) {
   return {
     x: x / config.ZOOM_LEVEL + camera.x,
@@ -172,42 +166,44 @@ function screenToWorld(x, y) {
   };
 }
 
-// Mouse event listeners
-canvas.addEventListener("mousedown", (e) => {
+// Mouse handling
+canvas.addEventListener("pointerdown", (e) => {
   isMouseDown = true;
   updateMousePosition(e);
 });
 
-canvas.addEventListener("mouseup", () => {
+canvas.addEventListener("pointerup", () => {
   isMouseDown = false;
+  player.targetX = null;
+  player.targetY = null;
 });
 
-canvas.addEventListener("mousemove", (e) => {
+canvas.addEventListener("pointermove", (e) => {
   updateMousePosition(e);
 });
 
-// Update mouse position in world coordinates
 function updateMousePosition(e) {
   const rect = canvas.getBoundingClientRect();
-  const clickX = e.clientX - rect.left;
-  const clickY = e.clientY - rect.top;
-  const worldPos = screenToWorld(clickX, clickY);
+  const worldPos = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
   mouseWorldX = worldPos.x;
   mouseWorldY = worldPos.y;
 }
 
-// Simulate clicks every 0.2 seconds while mouse is held down
-function checkMouseHold() {
-  if (isMouseDown) {
-    player.targetX = mouseWorldX;
-    player.targetY = mouseWorldY;
-  }
-}
-
-setInterval(checkMouseHold, 200);
-
 // Update game state
 function update() {
+  // Continuous mouse tracking
+  if (isMouseDown) {
+    if (mouseWorldX !== lastFrameMouseX || mouseWorldY !== lastFrameMouseY) {
+      player.targetX = mouseWorldX;
+      player.targetY = mouseWorldY;
+    }
+  }
+
+  // Store current mouse position
+  lastFrameMouseX = mouseWorldX;
+  lastFrameMouseY = mouseWorldY;
+
+  // Player movement
   if (player.targetX !== null && player.targetY !== null) {
     const dx = player.targetX - player.x;
     const dy = player.targetY - player.y;
@@ -224,27 +220,29 @@ function update() {
     }
   }
 
+  // Camera follow
   camera.x += (player.x - camera.x - camera.width / 2) * config.CAMERA_LERP;
   camera.y += (player.y - camera.y - camera.height / 2) * config.CAMERA_LERP;
 }
 
-// Draw the game
+// Draw game
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.save();
   ctx.scale(config.ZOOM_LEVEL, config.ZOOM_LEVEL);
 
-  // Align the camera to whole pixels to prevent sub-pixel rendering
+  // Aligned camera
   const alignedCameraX = Math.floor(camera.x);
   const alignedCameraY = Math.floor(camera.y);
   ctx.translate(-alignedCameraX, -alignedCameraY);
 
+  // Visible area
   const startX = Math.max(0, Math.floor(alignedCameraX / config.TILE_SIZE));
   const startY = Math.max(0, Math.floor(alignedCameraY / config.TILE_SIZE));
   const endX = Math.min(config.WORLD_SIZE, Math.ceil((alignedCameraX + camera.width) / config.TILE_SIZE));
   const endY = Math.min(config.WORLD_SIZE, Math.ceil((alignedCameraY + camera.height) / config.TILE_SIZE));
 
-  // Draw terrain sprites
+  // Draw tiles
   for (let y = startY; y < endY; y++) {
     for (let x = startX; x < endX; x++) {
       const sprite = tiles[y][x] === 1 ? sprites.water : sprites.grass;
@@ -252,7 +250,7 @@ function draw() {
     }
   }
 
-  // Draw player sprite
+  // Draw player
   ctx.drawImage(
     sprites.player,
     Math.floor(player.x - config.PLAYER_SIZE / 2),
@@ -262,8 +260,6 @@ function draw() {
   );
 
   ctx.restore();
-
-  // Draw the minimap
   drawMinimap();
 }
 
